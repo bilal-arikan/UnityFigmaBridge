@@ -752,6 +752,8 @@ namespace UnityFigmaBridge.Editor.FigmaApi
             GRADIENT_DIAMOND,
             IMAGE,
             EMOJI,
+            VIDEO,
+            PATTERN
         }
 
         /// <summary>

@@ -40,6 +40,10 @@ namespace UnityFigmaBridge.Editor.Settings
         [Tooltip("If true, download only selected pages and screens")]
         public bool OnlyImportSelectedPages = false;
 
+        [Space(10)]
+        [Tooltip("Root folder path for generated Figma assets (default: Assets/Figma)")]
+        public string FigmaAssetsRootFolder = "Assets/Figma";
+
         [HideInInspector]
         public List<FigmaPageData> PageDataList = new ();
 

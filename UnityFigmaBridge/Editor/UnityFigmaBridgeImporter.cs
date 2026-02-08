@@ -138,6 +138,9 @@ namespace UnityFigmaBridge.Editor
                 }
             }
 
+            // Initialize FigmaPaths with configured assets root folder
+            FigmaPaths.FigmaAssetsRootFolder = s_UnityFigmaBridgeSettings.FigmaAssetsRootFolder;
+            
             if (Shader.Find("TextMeshPro/Mobile/Distance Field")==null)
             {
                 EditorUtility.DisplayDialog("Text Mesh Pro" ,"You need to install TestMeshPro Essentials. Use Window->Text Mesh Pro->Import TMP Essential Resources","OK");

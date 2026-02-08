@@ -258,6 +258,13 @@ namespace UnityFigmaBridge.Editor.Nodes
             // We want prefab to be stored with a default position, so reset and restore
             var current = screenRectTransform.anchoredPosition;
             screenRectTransform.anchoredPosition = Vector2.zero;
+            
+            // Enhance screen with UI components if enabled
+            if (figmaImportProcessData.Settings.EnhanceScreensWithUIComponents)
+            {
+                BehaviourBindingManager.EnhanceScreenWithComponents(screenRectTransform.gameObject);
+            }
+            
             // Write prefab
             var screenPrefab = PrefabUtility.SaveAsPrefabAssetAndConnect(screenRectTransform.gameObject,
                     FigmaPaths.GetPathForScreenPrefab(node,screenNameCount), InteractionMode.UserAction);

@@ -41,6 +41,10 @@ namespace UnityFigmaBridge.Editor.Settings
         public bool OnlyImportSelectedPages = false;
 
         [Space(10)]
+        [Tooltip("Automatically add Canvas, CanvasScaler, and GraphicRaycaster components to generated screens (useful for standalone prefabs)")]
+        public bool EnhanceScreensWithUIComponents = false;
+
+        [Space(10)]
         [Tooltip("Root folder path for generated Figma assets (default: Assets/Figma)")]
         public string FigmaAssetsRootFolder = "Assets/Figma";
 

@@ -18,6 +18,35 @@ namespace UnityFigmaBridge.Editor.PrototypeFlow
         private const int MAX_SEARCH_DEPTH_FOR_TRANSFORMS = 3;
         
         /// <summary>
+        /// Add essential UI components to screens if they're missing (Canvas, CanvasScaler, GraphicRaycaster)
+        /// </summary>
+        public static void EnhanceScreenWithComponents(GameObject screenGameObject)
+        {
+            // Add Canvas if missing
+            if (screenGameObject.GetComponent<Canvas>() == null)
+            {
+                var canvas = screenGameObject.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                canvas.additionalShaderChannels = AdditionalCanvasShaderChannels.TexCoord1 | AdditionalCanvasShaderChannels.TexCoord2 | AdditionalCanvasShaderChannels.TexCoord3 | AdditionalCanvasShaderChannels.Normal | AdditionalCanvasShaderChannels.Tangent;
+            }
+            
+            // Add CanvasScaler if missing
+            if (screenGameObject.GetComponent<CanvasScaler>() == null)
+            {
+                var canvasScaler = screenGameObject.AddComponent<CanvasScaler>();
+                canvasScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                canvasScaler.referenceResolution = new Vector2(1920, 1080);
+            }
+            
+            // Add GraphicRaycaster if missing
+            if (screenGameObject.GetComponent<GraphicRaycaster>() == null)
+            {
+                var graphicRaycaster = screenGameObject.AddComponent<GraphicRaycaster>();
+                graphicRaycaster.blockingObjects = GraphicRaycaster.BlockingObjects.TwoD;
+            }
+        }
+        
+        /// <summary>
         /// Attempts to find a suitable mono behaviour to bind
         /// </summary>
         /// <param name="node"></param>

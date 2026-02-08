@@ -47,8 +47,10 @@ namespace UnityFigmaBridge.Editor.Nodes
             // Apply the "size" figmaNode from figma to set size
             targetRectTransform.sizeDelta = new Vector2(figmaNode.size.x, figmaNode.size.y);
 
-            //Add a layout element and set its preferred size
-            LayoutElement layoutElement = targetRectTransform.gameObject.AddComponent<LayoutElement>();
+            //Add a layout element and set its preferred size (only if it doesn't already exist)
+            LayoutElement layoutElement = targetRectTransform.gameObject.GetComponent<LayoutElement>();
+            if (layoutElement == null)
+                layoutElement = targetRectTransform.gameObject.AddComponent<LayoutElement>();
             layoutElement.preferredWidth = figmaNode.size.x;
             layoutElement.preferredHeight = figmaNode.size.y;
 
@@ -143,8 +145,10 @@ namespace UnityFigmaBridge.Editor.Nodes
             // We'll use absolute bounding box size
             targetRectTransform.sizeDelta = new Vector2(figmaNode.absoluteBoundingBox.width, figmaNode.absoluteBoundingBox.height);
 
-            //Add a layout element and set its preferred size
-            LayoutElement layoutElement = targetRectTransform.gameObject.AddComponent<LayoutElement>();
+            //Add a layout element and set its preferred size (only if it doesn't already exist)
+            LayoutElement layoutElement = targetRectTransform.gameObject.GetComponent<LayoutElement>();
+            if (layoutElement == null)
+                layoutElement = targetRectTransform.gameObject.AddComponent<LayoutElement>();
             layoutElement.preferredWidth = figmaNode.absoluteBoundingBox.width;
             layoutElement.preferredHeight = figmaNode.absoluteBoundingBox.height;
 

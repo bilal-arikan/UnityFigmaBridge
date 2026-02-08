@@ -325,9 +325,15 @@ namespace UnityFigmaBridge.Editor
             // Build a list of page IDs to download
             var downloadPageIdList = downloadPageNodeList.Select(p => p.id).ToList();
             
-            // Ensure we have all required directories, and remove existing files
-            // TODO - Once we move to processing only differences, we won't remove existing files
-            FigmaPaths.CreateRequiredDirectories();
+            // Store for old prefabs before directory creation (for orphan cleanup)
+            var figmaBridgeProcessData = new FigmaImportProcessData
+            {
+                Settings = s_UnityFigmaBridgeSettings,
+                SourceFile = figmaFile
+            };
+            
+            // Ensure we have all required directories, and capture old paths for cleanup
+            FigmaPaths.CreateRequiredDirectories(figmaBridgeProcessData);
             
             // Next build a list of all externally referenced components not included in the document (eg
             // from external libraries) and download
@@ -521,6 +527,10 @@ namespace UnityFigmaBridge.Editor
                 // Write CS file with references to flowScreen name
                 if (s_UnityFigmaBridgeSettings.CreateScreenNameCSharpFile) ScreenNameCodeGenerator.WriteScreenNamesCodeFile(figmaBridgeProcessData.ScreenPrefabs);
             }
+            
+            // Clean up orphaned prefabs (those that existed before but don't exist in the new import)
+            FigmaPaths.CleanupOrphanedPrefabs(figmaBridgeProcessData);
+            
             CleanUpPostGeneration();
             EditorUtility.ClearProgressBar();
             AssetDatabase.Refresh();

@@ -214,20 +214,10 @@ namespace UnityFigmaBridge.Editor
                 }
             }
             
-            // If doesnt exist create new one
-            if (s_SceneCanvas == null)
-            {
-                s_SceneCanvas = CreateCanvas(true);
-            }
-            
             // If we are building a prototype and settings allow, ensure we have a UI Controller component
             if (s_UnityFigmaBridgeSettings.BuildPrototypeFlow)
             {
-                // First try to find existing PrototypeFlowController on the canvas
-                s_PrototypeFlowController = Object.FindObjectOfType<PrototypeFlowController>();
-                // Only create if still not found
-                if (s_PrototypeFlowController == null)
-                    s_PrototypeFlowController = s_SceneCanvas.gameObject.AddComponent<PrototypeFlowController>();
+                s_PrototypeFlowController = FigmaAssetGenerator.InitPrototypeFlowControllerOnScene();
             }
             else
             {
@@ -271,34 +261,6 @@ namespace UnityFigmaBridge.Editor
             return false;
         }
 
-
-        private static Canvas CreateCanvas(bool createEventSystem)
-        {
-            // Canvas
-            var canvasGameObject = new GameObject("Canvas");
-            var canvas=canvasGameObject.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvasGameObject.AddComponent<GraphicRaycaster>();
-
-            if (!createEventSystem) return canvas;
-
-            var existingEventSystem = Object.FindObjectOfType<EventSystem>();
-            if (existingEventSystem == null)
-            {
-                // Create new event system
-                var eventSystemGameObject = new GameObject("EventSystem");
-                existingEventSystem=eventSystemGameObject.AddComponent<EventSystem>();
-            }
-
-            var pointerInputModule = Object.FindObjectOfType<PointerInputModule>();
-            if (pointerInputModule == null)
-            {
-                // TODO - Allow for new input system?
-                existingEventSystem.gameObject.AddComponent<StandaloneInputModule>();
-            }
-
-            return canvas;
-        }
         
 
         private static void ReportError(string message,string error)
@@ -473,22 +435,17 @@ namespace UnityFigmaBridge.Editor
                 if (figmaBridgeProcessData.PrototypeFlowController)
                     figmaBridgeProcessData.PrototypeFlowController.ClearFigmaScreens();
             }
-            else
-            {
-                // Only create new canvas if we don't have one already
-                if (s_SceneCanvas == null)
-                    s_SceneCanvas = CreateCanvas(false);
-            }
 
+            GameObject root = null;
             try
             {
-                FigmaAssetGenerator.BuildFigmaFile(s_SceneCanvas, figmaBridgeProcessData);
+                root = FigmaAssetGenerator.BuildFigmaFile(figmaBridgeProcessData);
             }
             catch (Exception e)
             {
                 ReportError("Error generating Figma document. Check log for details", e.ToString());
                 EditorUtility.ClearProgressBar();
-                CleanUpPostGeneration();
+                CleanUpPostGeneration(root);
                 return;
             }
            
@@ -544,7 +501,7 @@ namespace UnityFigmaBridge.Editor
             // Clean up orphaned prefabs (those that existed before but don't exist in the new import)
             FigmaPaths.CleanupOrphanedPrefabs(figmaBridgeProcessData);
             
-            CleanUpPostGeneration();
+            CleanUpPostGeneration(root);
             EditorUtility.ClearProgressBar();
             AssetDatabase.Refresh();
         }
@@ -552,12 +509,16 @@ namespace UnityFigmaBridge.Editor
         /// <summary>
         ///  Clean up any leftover assets post-generation
         /// </summary>
-        private static void CleanUpPostGeneration()
+        private static void CleanUpPostGeneration(GameObject root)
         {
-            if (!s_UnityFigmaBridgeSettings.BuildPrototypeFlow)
+            if (!s_UnityFigmaBridgeSettings.BuildPrototypeFlow && s_SceneCanvas != null)
             {
                 // Destroy temporary canvas
                 Object.DestroyImmediate(s_SceneCanvas.gameObject);
+            }
+            if(root != null)
+            {
+                Object.DestroyImmediate(root);
             }
         }
     }

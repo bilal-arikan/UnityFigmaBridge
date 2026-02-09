@@ -63,9 +63,17 @@ the specified screen as per the Figma document. Currently there is a dew
 
 ## Syncing your Figma Document
 
-* Click Figma Bridge → Sync Document
-* Enter your Personal Access Token (this will be stored in your Player Prefs for future use)
-* It will ask if you want to use the current scene to generate prototype flow - Click yes
+Click on the appropriate menu item under **Figma Bridge** to sync your document:
+
+* **Figma Bridge → Sync ALL** - Complete sync including document download and all assets (recommended for initial setup)
+* **Figma Bridge → Sync Document (No Image)** - Downloads only the document structure without downloading image assets
+* **Figma Bridge → Reprocess Downloaded Document** - Reprocess the currently cached Figma document without re-downloading
+* **Figma Bridge → Download Server Rendered Images** - Separately download complex vector shapes (useful for updating only rendered assets)
+* **Figma Bridge → Download Image Fills** - Separately download image fills (useful for updating only image assets)
+
+You will need to:
+* Enter or confirm your Personal Access Token (this will be stored in your Player Prefs for future use)
+* Choose whether you want to use the current scene to generate prototype flow when prompted
 
 ## Selecting Figma Pages
 
@@ -91,6 +99,12 @@ assets imported. Any page that is not selected will have the following rules:
 | **Component Instances** | The matching component prefab is instantiated, and any modified properties are applied                                 |
 | **Pages**               | Prefabs of each complete page are stored in the *Pages* folder                                                         |
 | **Vectors**             | Rendered on the server as a PNG (see *Server Rendering* nelow)                                                         |
+
+* **Placeholder Images** - When image downloads fail (due to network issues, rate limiting, etc.), placeholder images (2x2 gray PNG) are automatically created
+* **Failed Downloads Can Be Retried** - Use the "Download Server Rendered Images" or "Download Image Fills" menu items to re-attempt downloads - placeholders are automatically replaced with actual images
+* **No Broken References** - Placeholder images ensure your UI continues to render even if some images fail to download
+
+This is particularly useful when dealing with the Figma API's rate limiting (429 errors) on documents with many server-rendered shapes.
 
 ## Fonts
 
@@ -166,6 +180,14 @@ uses reflection to do the following:
   will try and find matching object names within a depth of 2 (currently hardcoded) and look for a matching component.
   For example, I could add ```public TextMeshPro_UGUI Title``` and if there is a text object called *Title* then it will
   be assigned to that field.
+
+### Advanced Field Binding
+The field binding system now supports multiple naming conventions, making it more flexible:
+* **Exact Case-Insensitive Match** - "MyButton" field matches "mybutton" object
+* **Normalized Name Matching** - "My_Play_Button" field matches "My Play Button" or "my-play-button" object (spaces, dashes, and underscores are ignored)
+* **Underscore-Prefixed Fields** - Fields like "m_ScoreLabel" will match objects named "ScoreLabel"
+
+This allows your Figma document to use natural naming (with spaces and dashes) that will be automatically matched to C# field names.
 
 ![Button Press Binding](/Docs/ButtonPressBinding.png)
 

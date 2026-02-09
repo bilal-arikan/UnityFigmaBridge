@@ -273,7 +273,7 @@ namespace UnityFigmaBridge.Editor.Nodes
             // Enhance screen with UI components if enabled
             if (figmaImportProcessData.Settings.EnhanceScreensWithUIComponents)
             {
-                BehaviourBindingManager.EnhanceScreenWithComponents(screenRectTransform.gameObject);
+                BehaviourBindingManager.EnhanceScreenWithComponents(screenRectTransform.gameObject, node.size.x, node.size.y);
             }
             
             // Write prefab

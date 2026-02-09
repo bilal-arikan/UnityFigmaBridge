@@ -65,8 +65,8 @@ namespace UnityFigmaBridge.Editor
             SyncAsync();
         }
 
-        [MenuItem("Figma Bridge/Reprocess Downloaded Document", priority = 2, secondaryPriority = 0)]
-        static void ReprocessDownloadedDocument()
+        [MenuItem("Figma Bridge/Reprocess Cached Document", priority = 2, secondaryPriority = 0)]
+        static void ReprocessCachedDocument()
         {
             ReprocessDocumentAsync();
         }
@@ -102,6 +102,7 @@ namespace UnityFigmaBridge.Editor
         private static async void ReprocessDocumentAsync()
         {
             var figmaFile = FigmaApiUtils.LoadFigmaDocumentFromCache();
+            await ProcessDocument(figmaFile);
             await SyncServerRenderedImagesAsync(figmaFile);
             await SyncImageFillsAsync(figmaFile);
         }
@@ -113,6 +114,14 @@ namespace UnityFigmaBridge.Editor
 
             var figmaFile = await DownloadFigmaDocument(s_UnityFigmaBridgeSettings.FileId);
             if (figmaFile == null) return;
+
+            await ProcessDocument(figmaFile);
+        }
+        
+        private static async Task ProcessDocument(FigmaFile figmaFile)
+        {
+            var requirementsMet = CheckRequirements();
+            if (!requirementsMet) return;
 
             var pageNodeList = FigmaDataUtils.GetPageNodes(figmaFile);
 
@@ -152,7 +161,7 @@ namespace UnityFigmaBridge.Editor
 
             await ImportDocument(s_UnityFigmaBridgeSettings.FileId, figmaFile, pageNodeList);
         }
-        
+
         /// <summary>
         /// Download server rendered images separately with rate limiting to avoid 429 errors
         /// </summary>

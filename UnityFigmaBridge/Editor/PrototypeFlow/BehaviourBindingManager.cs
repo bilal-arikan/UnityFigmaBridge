@@ -20,7 +20,10 @@ namespace UnityFigmaBridge.Editor.PrototypeFlow
         /// <summary>
         /// Add essential UI components to screens if they're missing (Canvas, CanvasScaler, GraphicRaycaster)
         /// </summary>
-        public static void EnhanceScreenWithComponents(GameObject screenGameObject)
+        /// <param name="screenGameObject">The screen GameObject to enhance</param>
+        /// <param name="screenWidth">Reference width from Figma (default: 1920)</param>
+        /// <param name="screenHeight">Reference height from Figma (default: 1080)</param>
+        public static void EnhanceScreenWithComponents(GameObject screenGameObject, float screenWidth = 1920f, float screenHeight = 1080f)
         {
             // Add Canvas if missing
             if (screenGameObject.GetComponent<Canvas>() == null)
@@ -35,7 +38,8 @@ namespace UnityFigmaBridge.Editor.PrototypeFlow
             {
                 var canvasScaler = screenGameObject.AddComponent<CanvasScaler>();
                 canvasScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                canvasScaler.referenceResolution = new Vector2(1920, 1080);
+                // Use Figma screen dimensions as reference resolution
+                canvasScaler.referenceResolution = new Vector2(screenWidth, screenHeight);
             }
             
             // Add GraphicRaycaster if missing

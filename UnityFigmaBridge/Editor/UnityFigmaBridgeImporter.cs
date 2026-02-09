@@ -64,7 +64,7 @@ namespace UnityFigmaBridge.Editor
         {
             SyncAsync();
         }
-        
+
         private static async void SyncAsync()
         {
             var requirementsMet = CheckRequirements();
@@ -110,14 +110,15 @@ namespace UnityFigmaBridge.Editor
             }
 
             await ImportDocument(s_UnityFigmaBridgeSettings.FileId, figmaFile, pageNodeList);
-            
+                
         }
 
         /// <summary>
         /// Check to make sure all requirements are met before syncing
         /// </summary>
+        /// <param name="checkPrototypeFlow">If true, checks and sets up prototype flow requirements. Set to false for reprocessing or server image sync only.</param>
         /// <returns></returns>
-        public static bool CheckRequirements() {
+        public static bool CheckRequirements(bool checkPrototypeFlow = true) {
             
             // Find the settings asset if it exists
             if (s_UnityFigmaBridgeSettings == null)
@@ -169,7 +170,7 @@ namespace UnityFigmaBridge.Editor
             }
             
             // Check all requirements for run time if required
-            if (s_UnityFigmaBridgeSettings.BuildPrototypeFlow)
+            if (checkPrototypeFlow && s_UnityFigmaBridgeSettings.BuildPrototypeFlow)
             {
                 if (!CheckRunTimeRequirements())
                     return false;
@@ -213,19 +214,26 @@ namespace UnityFigmaBridge.Editor
                 }
             }
             
-            // Find a canvas in the active scene
-            s_SceneCanvas = Object.FindObjectOfType<Canvas>();
-            
             // If doesnt exist create new one
             if (s_SceneCanvas == null)
             {
                 s_SceneCanvas = CreateCanvas(true);
             }
             
-            // If we are building a prototype, ensure we have a UI Controller component
-            s_PrototypeFlowController = s_SceneCanvas.GetComponent<PrototypeFlowController>();
-            if (s_PrototypeFlowController== null)
-                s_PrototypeFlowController = s_SceneCanvas.gameObject.AddComponent<PrototypeFlowController>();
+            // If we are building a prototype and settings allow, ensure we have a UI Controller component
+            if (s_UnityFigmaBridgeSettings.BuildPrototypeFlow)
+            {
+                // First try to find existing PrototypeFlowController on the canvas
+                s_PrototypeFlowController = Object.FindObjectOfType<PrototypeFlowController>();
+                // Only create if still not found
+                if (s_PrototypeFlowController == null)
+                    s_PrototypeFlowController = s_SceneCanvas.gameObject.AddComponent<PrototypeFlowController>();
+            }
+            else
+            {
+                // Skip creating PrototypeFlowController
+                s_PrototypeFlowController = null;
+            }
             
             return true;
         }
@@ -467,7 +475,9 @@ namespace UnityFigmaBridge.Editor
             }
             else
             {
-                s_SceneCanvas = CreateCanvas(false);
+                // Only create new canvas if we don't have one already
+                if (s_SceneCanvas == null)
+                    s_SceneCanvas = CreateCanvas(false);
             }
 
             try
@@ -527,8 +537,8 @@ namespace UnityFigmaBridge.Editor
                     var screenInstance=(GameObject)PrefabUtility.InstantiatePrefab(defaultScreenData.FigmaScreenPrefab, figmaBridgeProcessData.PrototypeFlowController.ScreenParentTransform);
                     figmaBridgeProcessData.PrototypeFlowController.SetCurrentScreen(screenInstance,defaultScreenData.FigmaNodeId,true);
                 }
-                // Write CS file with references to flowScreen name
-                if (s_UnityFigmaBridgeSettings.CreateScreenNameCSharpFile) ScreenNameCodeGenerator.WriteScreenNamesCodeFile(figmaBridgeProcessData.ScreenPrefabs);
+            // Write CS file with references to flowScreen name
+            if (s_UnityFigmaBridgeSettings.CreateScreenNameCSharpFile) ScreenNameCodeGenerator.WriteScreenNamesCodeFile(figmaBridgeProcessData.ScreenPrefabs);
             }
             
             // Clean up orphaned prefabs (those that existed before but don't exist in the new import)

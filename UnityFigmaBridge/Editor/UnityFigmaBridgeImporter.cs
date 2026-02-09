@@ -59,13 +59,54 @@ namespace UnityFigmaBridge.Editor
         /// </summary>
         private static PrototypeFlowController s_PrototypeFlowController;
 
-        [MenuItem("Figma Bridge/Sync Document")]
-        static void Sync()
+        [MenuItem("Figma Bridge/Sync ALL", priority = 0, secondaryPriority = 0)]
+        static void SyncAll()
         {
             SyncAsync();
         }
 
+        [MenuItem("Figma Bridge/Reprocess Downloaded Document", priority = 2, secondaryPriority = 0)]
+        static void ReprocessDownloadedDocument()
+        {
+            ReprocessDocumentAsync();
+        }
+
+
+        [MenuItem("Figma Bridge/Sync Document (No Image)", priority = 3, secondaryPriority = 0)]
+        static void SyncDocument()
+        {
+            SyncDocumentAsync();
+        }
+        
+        [MenuItem("Figma Bridge/Download Server Rendered Images", priority = 15)]
+        static void DownloadServerRenderedImages()
+        {
+            SyncServerRenderedImagesAsync(null);
+        }
+        
+        [MenuItem("Figma Bridge/Download Image Fills", priority = 16)]
+        static void DownloadImageFills()
+        {
+            SyncImageFillsAsync(null);
+        }
+        
+
         private static async void SyncAsync()
+        {
+            await SyncDocumentAsync();
+            var figmaFile = FigmaApiUtils.LoadFigmaDocumentFromCache();
+            await SyncServerRenderedImagesAsync(figmaFile);
+            await SyncImageFillsAsync(figmaFile);
+        }
+
+        private static async void ReprocessDocumentAsync()
+        {
+            var figmaFile = FigmaApiUtils.LoadFigmaDocumentFromCache();
+            await SyncServerRenderedImagesAsync(figmaFile);
+            await SyncImageFillsAsync(figmaFile);
+        }
+
+        private static async Task SyncDocumentAsync()
         {
             var requirementsMet = CheckRequirements();
             if (!requirementsMet) return;
@@ -110,7 +151,204 @@ namespace UnityFigmaBridge.Editor
             }
 
             await ImportDocument(s_UnityFigmaBridgeSettings.FileId, figmaFile, pageNodeList);
+        }
+        
+        /// <summary>
+        /// Download server rendered images separately with rate limiting to avoid 429 errors
+        /// </summary>
+        private static async Task SyncServerRenderedImagesAsync(FigmaFile figmaFile)
+        {
+            var requirementsMet = CheckRequirements(checkPrototypeFlow: false);
+            if (!requirementsMet) return;
+
+            EditorUtility.DisplayProgressBar(PROGRESS_BOX_TITLE, "Loading cached Figma document...", 0);
+            
+            // Load from cache instead of downloading
+            if (figmaFile == null)
+            {
+                figmaFile = FigmaApiUtils.LoadFigmaDocumentFromCache();
+            }
+            if (figmaFile == null)
+            {
+                EditorUtility.ClearProgressBar();
+                ReportError("No cached Figma document found", "Please run 'Sync Document' first to download the Figma file before syncing server rendered images.");
+                return;
+            }
+            
+            var pageNodeList = FigmaDataUtils.GetPageNodes(figmaFile);
+            
+            if (s_UnityFigmaBridgeSettings.OnlyImportSelectedPages)
+            {
+                var enabledPageIdList = s_UnityFigmaBridgeSettings.PageDataList.Where(p => p.Selected).Select(p => p.NodeId).ToList();
+                pageNodeList = pageNodeList.Where(p => enabledPageIdList.Contains(p.id)).ToList();
+            }
+            
+            var downloadPageIdList = pageNodeList.Select(p => p.id).ToList();
+            var externalComponentList = FigmaDataUtils.FindMissingComponentDefinitions(figmaFile);
+            var serverRenderNodes = FigmaDataUtils.FindAllServerRenderNodesInFile(figmaFile, externalComponentList, downloadPageIdList);
+            
+            if (serverRenderNodes.Count == 0)
+            {
+                EditorUtility.ClearProgressBar();
+                EditorUtility.DisplayDialog("No Server Rendered Images", "No complex shapes that require server rendering were found in the document.", "OK");
+                return;
+            }
+            
+            EditorUtility.DisplayProgressBar(PROGRESS_BOX_TITLE, "Downloading server rendered images...", 0);
+            
+            try
+            {
+                // Request a render of these nodes on the server if required
+                var serverRenderData=new List<FigmaServerRenderData>();
+                if (serverRenderNodes.Count > 0)
+                {
+                    var allNodeIds = serverRenderNodes.Select(serverRenderNode => serverRenderNode.SourceNode.id).ToList();
+                    // As the API has an upper limit of images that can be rendered in a single request, we'll need to batch
+                    var batchCount = Mathf.CeilToInt((float)allNodeIds.Count / MAX_SERVER_RENDER_IMAGE_BATCH_SIZE);
+                    for (var i = 0; i < batchCount; i++)
+                    {
+                        var startIndex = i * MAX_SERVER_RENDER_IMAGE_BATCH_SIZE;
+                        var nodeBatch = allNodeIds.GetRange(startIndex,
+                            Mathf.Min(MAX_SERVER_RENDER_IMAGE_BATCH_SIZE, allNodeIds.Count - startIndex));
+                        var serverNodeCsvList = string.Join(",", nodeBatch);
+                        EditorUtility.DisplayProgressBar(PROGRESS_BOX_TITLE, $"Downloading server-rendered image data {i+1}/{batchCount}",(float)i/(float)batchCount);
+                        try
+                        {
+                            var figmaTask = FigmaApiUtils.GetFigmaServerRenderData(s_UnityFigmaBridgeSettings.FileId, s_PersonalAccessToken,
+                                serverNodeCsvList, s_UnityFigmaBridgeSettings.ServerRenderImageScale);
+                            await figmaTask;
+                            serverRenderData.Add(figmaTask.Result);
+                        }
+                        catch (Exception e)
+                        {
+                            EditorUtility.ClearProgressBar();
+                            ReportError("Error downloading Figma Server Render Image Data", e.ToString());
+                            return;
+                        }
+                    }
+                }
+
+                // Process server rendered images in batches to avoid rate limiting (429 errors)
+                var nodeIds = serverRenderNodes.Select(n => n.SourceNode.id).ToList();
+                var successCount = 0;
+                var failureCount = 0;
+                    EditorUtility.DisplayProgressBar(
+                        PROGRESS_BOX_TITLE,
+                        $"Downloading server rendered images", 0);
+                    
+                try
+                {
+                    if (serverRenderData != null)
+                    {
+                        // Generate download list from the rendered images
+                        var downloadList = FigmaApiUtils.GenerateDownloadQueue(new FigmaImageFillData(), 
+                            serverRenderData, 
+                            serverRenderNodes);
+                        
+                        if (downloadList.Count > 0)
+                        {
+                            // Download all files in this batch
+                            await FigmaApiUtils.DownloadFiles(downloadList, s_UnityFigmaBridgeSettings);
+                            successCount += downloadList.Count;
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"Error downloading: {e}");
+                    
+                    // Create placeholder images for failed batch
+                    nodeIds = nodeIds.Select(i => FigmaDataUtils.ReplaceUnsafeFileCharactersForNodeId(i)).ToList();
+                    var placeholderCount = FigmaApiUtils.CreatePlaceholderImagesForBatch(FigmaPaths.FigmaServerRenderedImagesFolder, nodeIds);
+                }
                 
+                // Small delay between batches to respect rate limits
+                await Task.Delay(1000);
+                
+                EditorUtility.ClearProgressBar();
+                AssetDatabase.Refresh();
+                Debug.Log($"Server rendered images sync completed. {successCount} images downloaded successfully, {failureCount} failed (placeholders created).");
+            }
+            catch (Exception e)
+            {
+                EditorUtility.ClearProgressBar();
+                ReportError("Error downloading server rendered images", e.ToString());
+            }
+        }
+        
+        /// <summary>
+        /// Download image fills from Figma document
+        /// </summary>
+        private static async Task SyncImageFillsAsync(FigmaFile figmaFile)
+        {
+            var requirementsMet = CheckRequirements(checkPrototypeFlow: false);
+            if (!requirementsMet) return;
+
+            EditorUtility.DisplayProgressBar(PROGRESS_BOX_TITLE, "Loading cached Figma document...", 0);
+            
+            
+            // Load from cache instead of downloading
+            if(figmaFile == null)
+            {
+                figmaFile = FigmaApiUtils.LoadFigmaDocumentFromCache();
+            }
+            if (figmaFile == null)
+            {
+                EditorUtility.ClearProgressBar();
+                ReportError("No cached Figma document found", "Please run 'Sync Document' first to download the Figma file before syncing image fills.");
+                return;
+            }
+            
+            var pageNodeList = FigmaDataUtils.GetPageNodes(figmaFile);
+            
+            if (s_UnityFigmaBridgeSettings.OnlyImportSelectedPages)
+            {
+                var enabledPageIdList = s_UnityFigmaBridgeSettings.PageDataList.Where(p => p.Selected).Select(p => p.NodeId).ToList();
+                pageNodeList = pageNodeList.Where(p => enabledPageIdList.Contains(p.id)).ToList();
+            }
+            
+            var downloadPageIdList = pageNodeList.Select(p => p.id).ToList();
+            var foundImageFills = FigmaDataUtils.GetAllImageFillIdsFromFile(figmaFile, downloadPageIdList);
+            
+            if (foundImageFills.Count == 0)
+            {
+                EditorUtility.ClearProgressBar();
+                EditorUtility.DisplayDialog("No Image Fills", "No image fills found in the document.", "OK");
+                return;
+            }
+            
+            EditorUtility.DisplayProgressBar(PROGRESS_BOX_TITLE, "Downloading image fill data...", 0);
+            
+            try
+            {
+                // Get image fill data
+                var figmaTask = FigmaApiUtils.GetDocumentImageFillData(s_UnityFigmaBridgeSettings.FileId, s_PersonalAccessToken);
+                await figmaTask;
+                var activeFigmaImageFillData = figmaTask.Result;
+                
+                // Generate download list for image fills only
+                var downloadList = FigmaApiUtils.GenerateDownloadQueue(activeFigmaImageFillData, new List<FigmaServerRenderData>(), new List<ServerRenderNodeData>());
+                
+                if (downloadList.Count == 0)
+                {
+                    EditorUtility.ClearProgressBar();
+                    EditorUtility.DisplayDialog("No Images to Download", "All image fills are already up to date.", "OK");
+                    return;
+                }
+                
+                // Download all image files
+                await FigmaApiUtils.DownloadFiles(downloadList, s_UnityFigmaBridgeSettings);
+                
+                EditorUtility.ClearProgressBar();
+                AssetDatabase.Refresh();
+                Debug.Log($"Image fills sync completed. {downloadList.Count} images processed.");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"Error syncing image fills: {e}");
+                EditorUtility.ClearProgressBar();
+                ReportError("Error downloading image fills", e.ToString());
+            }
         }
 
         /// <summary>
@@ -342,34 +580,13 @@ namespace UnityFigmaBridge.Editor
             // First up create a list of nodes we'll substitute with rendered images
             var serverRenderNodes = FigmaDataUtils.FindAllServerRenderNodesInFile(figmaFile,externalComponentList,downloadPageIdList);
             
-            // Request a render of these nodes on the server if required
-            var serverRenderData=new List<FigmaServerRenderData>();
+            // For now, skip downloading server-rendered images during normal sync to avoid rate limiting
+            // Users can use "Sync Server Rendered Images" menu item to download them separately with rate limiting
             if (serverRenderNodes.Count > 0)
             {
-                var allNodeIds = serverRenderNodes.Select(serverRenderNode => serverRenderNode.SourceNode.id).ToList();
-                // As the API has an upper limit of images that can be rendered in a single request, we'll need to batch
-                var batchCount = Mathf.CeilToInt((float)allNodeIds.Count / MAX_SERVER_RENDER_IMAGE_BATCH_SIZE);
-                for (var i = 0; i < batchCount; i++)
-                {
-                    var startIndex = i * MAX_SERVER_RENDER_IMAGE_BATCH_SIZE;
-                    var nodeBatch = allNodeIds.GetRange(startIndex,
-                        Mathf.Min(MAX_SERVER_RENDER_IMAGE_BATCH_SIZE, allNodeIds.Count - startIndex));
-                    var serverNodeCsvList = string.Join(",", nodeBatch);
-                    EditorUtility.DisplayProgressBar(PROGRESS_BOX_TITLE, $"Downloading server-rendered image data {i+1}/{batchCount}",(float)i/(float)batchCount);
-                    try
-                    {
-                        var figmaTask = FigmaApiUtils.GetFigmaServerRenderData(fileId, s_PersonalAccessToken,
-                            serverNodeCsvList, s_UnityFigmaBridgeSettings.ServerRenderImageScale);
-                        await figmaTask;
-                        serverRenderData.Add(figmaTask.Result);
-                    }
-                    catch (Exception e)
-                    {
-                        EditorUtility.ClearProgressBar();
-                        ReportError("Error downloading Figma Server Render Image Data", e.ToString());
-                        return;
-                    }
-                }
+                var allNodeIds = serverRenderNodes.Select(serverRenderNode =>  FigmaDataUtils.ReplaceUnsafeFileCharactersForNodeId(serverRenderNode.SourceNode.id)).ToList();
+                var placeholderCount = FigmaApiUtils.CreatePlaceholderImagesForBatch(FigmaPaths.FigmaServerRenderedImagesFolder, allNodeIds);
+                Debug.Log($"Created {placeholderCount} placeholder images for server rendered nodes. Use 'Sync Server Rendered Images' to download actual images with rate limiting.");
             }
 
             // Make sure that existing downloaded assets are in the correct format
@@ -394,13 +611,13 @@ namespace UnityFigmaBridge.Editor
                 return;
             }
             
-            // Generate a list of all items that need to be downloaded
-            var downloadList =
-                FigmaApiUtils.GenerateDownloadQueue(activeFigmaImageFillData,foundImageFills, serverRenderData, serverRenderNodes);
-
-            // Download all required files
-            await FigmaApiUtils.DownloadFiles(downloadList, s_UnityFigmaBridgeSettings);
-            
+            // Create placeholders for image fills
+            if (foundImageFills.Count > 0)
+            {
+                var imageFillIds = foundImageFills.Select(id => FigmaDataUtils.ReplaceUnsafeFileCharactersForNodeId(id)).ToList();
+                var placeholderCount = FigmaApiUtils.CreatePlaceholderImagesForBatch(FigmaPaths.FigmaImageFillFolder, imageFillIds);
+                Debug.Log($"Created {placeholderCount} placeholder images for image fills.");
+            }
 
             // Generate font mapping data
             var figmaFontMapTask = FontManager.GenerateFontMapForDocument(figmaFile,
@@ -414,20 +631,14 @@ namespace UnityFigmaBridge.Editor
                 MissingComponentDefinitionsList = externalComponentList, 
             };
             
-            // Stores necessary importer data needed for document generator.
-            var figmaBridgeProcessData = new FigmaImportProcessData
-            {
-                Settings=s_UnityFigmaBridgeSettings,
-                SourceFile = figmaFile,
-                ComponentData = componentData,
-                ServerRenderNodes = serverRenderNodes,
-                PrototypeFlowController = s_PrototypeFlowController,
-                FontMap = fontMap,
-                PrototypeFlowStartPoints = FigmaDataUtils.GetAllPrototypeFlowStartingPoints(figmaFile),
-                SelectedPagesForImport = downloadPageNodeList,
-                NodeLookupDictionary = FigmaDataUtils.BuildNodeLookupDictionary(figmaFile)
-            };
-            
+            // Update the process data with remaining info
+            figmaBridgeProcessData.ComponentData = componentData;
+            figmaBridgeProcessData.ServerRenderNodes = serverRenderNodes;
+            figmaBridgeProcessData.PrototypeFlowController = s_PrototypeFlowController;
+            figmaBridgeProcessData.FontMap = fontMap;
+            figmaBridgeProcessData.PrototypeFlowStartPoints = FigmaDataUtils.GetAllPrototypeFlowStartingPoints(figmaFile);
+            figmaBridgeProcessData.SelectedPagesForImport = downloadPageNodeList;
+            figmaBridgeProcessData.NodeLookupDictionary = FigmaDataUtils.BuildNodeLookupDictionary(figmaFile);
             
             // Clear the existing screens on the flowScreen controller
             if (s_UnityFigmaBridgeSettings.BuildPrototypeFlow)

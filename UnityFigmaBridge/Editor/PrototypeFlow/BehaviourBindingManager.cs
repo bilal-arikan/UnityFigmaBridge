@@ -55,7 +55,11 @@ namespace UnityFigmaBridge.Editor.PrototypeFlow
         {
             // Add in any special behaviours driven by name or other rules. If special case, dont add any more behaviours
             bool specialCaseNode=AddSpecialBehavioursToNode(gameObject,importProcessData);
-            if (specialCaseNode) return;
+            if (specialCaseNode)
+            {
+                Debug.Log($"Added special case behaviour to node {gameObject.name}, skipping further bindings");
+                return;
+            }
             
             var bindingNameSpace = importProcessData.Settings.ScreenBindingNamespace;
             var className = $"{gameObject.name}";
@@ -72,11 +76,21 @@ namespace UnityFigmaBridge.Editor.PrototypeFlow
             if (!matchingType.IsSubclassOf(typeof(MonoBehaviour)))
             {
                 // Type found but is not a MonoBehaviour, cannot attach");
+                Debug.Log($"Type found for {gameObject.name} with expected class name {className} in namespace {bindingNameSpace} is not a MonoBehaviour");
                 return;
             }
             // Make sure it doesnt already have this component attached (this can happen for nested components)
             var attachedBehaviour = gameObject.GetComponent(matchingType);
-            if (attachedBehaviour==null) attachedBehaviour=gameObject.AddComponent(matchingType);
+            if (attachedBehaviour==null) 
+            {
+                attachedBehaviour=gameObject.AddComponent(matchingType);
+                
+                // Move component to the top of the inspector
+                for (int i = 0; i < gameObject.GetComponents<Component>().Length - 1; i++)
+                {
+                    UnityEditorInternal.ComponentUtility.MoveComponentUp(attachedBehaviour);
+                }
+            }
             
             // Find all fields for this class, and if inherit from component, look to assign
             BindFieldsForComponent(gameObject, attachedBehaviour);
@@ -107,7 +121,9 @@ namespace UnityFigmaBridge.Editor.PrototypeFlow
             // Then check private fields
             FieldInfo[] privateSerializedFields=componentType.GetFields(
                 BindingFlags.NonPublic | 
-                BindingFlags.Instance);
+                BindingFlags.Instance |
+                BindingFlags.Public |
+                BindingFlags.FlattenHierarchy);
             List<FieldInfo> allSerializedComponentFields = privateSerializedFields.Where(field => field.GetCustomAttribute(typeof(SerializeField)) != null).ToList();
             
             // And add all public fields
@@ -200,6 +216,13 @@ namespace UnityFigmaBridge.Editor.PrototypeFlow
             if (caseInsensitive && transform.name == nameMatch) return true;
             if (!caseInsensitive && String.Equals(transform.name, nameMatch, StringComparison.CurrentCultureIgnoreCase)) return true;
 
+            // Normalize both strings for comparison (remove spaces, dashes, and underscores)
+            var normalizedTransformName = NormalizeFieldName(transform.name);
+            var normalizedNameMatch = NormalizeFieldName(nameMatch);
+            
+            if (normalizedTransformName == normalizedNameMatch)
+                return true;
+
             // If this contains an underscore, check the substring after
             // This is to allow matches of fields such as m_ScoreLabel as "ScoreLabel" from figma doc
             if (nameMatch.Contains("_"))
@@ -209,6 +232,19 @@ namespace UnityFigmaBridge.Editor.PrototypeFlow
             }
             
             return false;
+        }
+        
+        /// <summary>
+        /// Normalize field name by removing spaces, dashes, underscores and converting to lowercase
+        /// This allows matching Figma names like "My Label" or "my-label" to C# fields like "MyLabel"
+        /// </summary>
+        private static string NormalizeFieldName(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return name;
+            
+            // Remove spaces, dashes, and underscores, then convert to lowercase
+            return System.Text.RegularExpressions.Regex.Replace(name, @"[\s\-_]", "").ToLower();
         }
         
         

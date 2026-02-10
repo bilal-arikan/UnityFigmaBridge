@@ -81,7 +81,14 @@ namespace UnityFigmaBridge.Editor.Nodes
         private static void ApplyFigmaConstraints(RectTransform targetRectTransform, Node figmaNode,Node figmaParentNode)
         {
              // Setup anchor positions 
-            (targetRectTransform.anchorMin, targetRectTransform.anchorMax) = AnchorPositionsForFigmaConstraints(figmaNode.constraints);
+             if(figmaParentNode.size == null)
+            {
+                (targetRectTransform.anchorMin, targetRectTransform.anchorMax) = (new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            }
+            else
+            {
+                (targetRectTransform.anchorMin, targetRectTransform.anchorMax) = AnchorPositionsForFigmaConstraints(figmaNode.constraints);
+            }
             
             // We'll need to use the size of the parent node to determine anchor position
             var parentNodeSize = figmaParentNode.size != null ? figmaParentNode.size : new Vector { x = 0, y = 0 };
@@ -107,24 +114,26 @@ namespace UnityFigmaBridge.Editor.Nodes
             
             targetRectTransform.anchoredPosition = anchoredPosition;
 
-            switch (figmaNode.constraints.horizontal)
+            if(figmaParentNode.size != null)
             {
-                case LayoutConstraint.HorizontalLayoutConstraint.LEFT_RIGHT: 
-                case LayoutConstraint.HorizontalLayoutConstraint.SCALE:
-                    var sizeDelta = targetRectTransform.sizeDelta;
-                    targetRectTransform.sizeDelta = new Vector2(sizeDelta.x-parentNodeSize.x, sizeDelta.y);
-                    break;
-            }
+                switch (figmaNode.constraints.horizontal)
+                {
+                    case LayoutConstraint.HorizontalLayoutConstraint.LEFT_RIGHT: 
+                    case LayoutConstraint.HorizontalLayoutConstraint.SCALE:
+                        var sizeDelta = targetRectTransform.sizeDelta;
+                        targetRectTransform.sizeDelta = new Vector2(sizeDelta.x - parentNodeSize.x, sizeDelta.y);
+                        break;
+                }
 
-            switch (figmaNode.constraints.vertical)
-            {
-                case LayoutConstraint.VerticalLayoutConstraint.TOP_BOTTOM:
-                case LayoutConstraint.VerticalLayoutConstraint.SCALE:
-                    var sizeDelta = targetRectTransform.sizeDelta;
-                    targetRectTransform.sizeDelta = new Vector2(sizeDelta.x, sizeDelta.y - parentNodeSize.y);
-                    break;
+                switch (figmaNode.constraints.vertical)
+                {
+                    case LayoutConstraint.VerticalLayoutConstraint.TOP_BOTTOM:
+                    case LayoutConstraint.VerticalLayoutConstraint.SCALE:
+                        var sizeDelta = targetRectTransform.sizeDelta;
+                        targetRectTransform.sizeDelta = new Vector2(sizeDelta.x, sizeDelta.y - parentNodeSize.y);
+                        break;
+                }
             }
-            
         }
 
         /// <summary>
